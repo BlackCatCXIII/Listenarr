@@ -28,19 +28,22 @@ namespace Listenarr.Api.Features.Library
         private readonly IMoveQueueService? _moveQueueService;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger<LibraryMoveWorkflow> _logger;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryMoveWorkflow(
             IAudiobookRepository repo,
             IServiceScopeFactory scopeFactory,
             IFileSystem fileSystem,
             ILogger<LibraryMoveWorkflow> logger,
-            IMoveQueueService? moveQueueService = null)
+            IMoveQueueService? moveQueueService = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _scopeFactory = scopeFactory;
             _fileSystem = fileSystem;
             _logger = logger;
             _moveQueueService = moveQueueService;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> EnqueueAsync(int id, LibraryController.MoveRequest request)
@@ -87,6 +90,7 @@ namespace Listenarr.Api.Features.Library
                     {
                         audiobook.BasePath = final;
                         await _repo.UpdateAsync(audiobook);
+                        await SyncCoverSidecarAsync(audiobook);
                         _logger.LogInformation("Updated BasePath for audiobook {AudiobookId} without moving files: {BasePath}", id, final);
                         return new OkObjectResult(new { message = "Destination updated" });
                     }
@@ -211,6 +215,30 @@ namespace Listenarr.Api.Features.Library
             catch (Exception ex) when (ex is not OperationCanceledException && ex is not OutOfMemoryException && ex is not StackOverflowException)
             {
                 _logger.LogWarning(ex, "Failed to broadcast MoveJobUpdate for job {JobId}", jobId);
+            }
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after moving audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after moving audiobook {AudiobookId}", audiobook.Id);
             }
         }
     }

@@ -33,6 +33,7 @@ namespace Listenarr.Api.Features.Library
         private readonly string _contentRootPath;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger<LibraryBulkEditWorkflow> _logger;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryBulkEditWorkflow(
             IAudiobookRepository repo,
@@ -42,7 +43,8 @@ namespace Listenarr.Api.Features.Library
             IFileNamingService fileNamingService,
             IApplicationPathService applicationPathService,
             IFileSystem fileSystem,
-            ILogger<LibraryBulkEditWorkflow> logger)
+            ILogger<LibraryBulkEditWorkflow> logger,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _imageCacheService = imageCacheService;
@@ -52,6 +54,7 @@ namespace Listenarr.Api.Features.Library
             _contentRootPath = applicationPathService.ContentRootPath;
             _fileSystem = fileSystem;
             _logger = logger;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> BulkDeleteAsync(LibraryController.BulkDeleteRequest request)
@@ -159,6 +162,7 @@ namespace Listenarr.Api.Features.Library
                     }
 
                     var changed = false;
+                    var coverSidecarResyncNeeded = false;
 
                     if (request.Updates != null && request.Updates.TryGetValue("monitored", out var monitoredObj))
                     {
@@ -227,6 +231,7 @@ namespace Listenarr.Api.Features.Library
 
                                     audiobook.BasePath = newBase;
                                     changed = true;
+                                    coverSidecarResyncNeeded = true;
 
                                     await AddBulkUpdateHistoryAsync(audiobook, $"BasePath set to {newBase} via bulk update");
                                 }
@@ -245,6 +250,11 @@ namespace Listenarr.Api.Features.Library
                     if (changed)
                     {
                         await _repo.UpdateAsync(audiobook);
+                        if (coverSidecarResyncNeeded)
+                        {
+                            await SyncCoverSidecarAsync(audiobook);
+                        }
+
                         success = true;
                     }
                     else
@@ -261,6 +271,30 @@ namespace Listenarr.Api.Features.Library
             }
 
             return new OkObjectResult(new { message = "Bulk update completed", results });
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after bulk updating audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after bulk updating audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
         private async Task<int> DeleteCachedImageAsync(Audiobook audiobook)

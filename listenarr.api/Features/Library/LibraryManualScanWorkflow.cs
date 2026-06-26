@@ -31,6 +31,7 @@ namespace Listenarr.Api.Features.Library
         private readonly LibraryScanQueueWorkflow _scanQueueWorkflow;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger<LibraryManualScanWorkflow> _logger;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryManualScanWorkflow(
             IAudiobookRepository repo,
@@ -39,7 +40,8 @@ namespace Listenarr.Api.Features.Library
             LibraryScanQueueWorkflow scanQueueWorkflow,
             IFileSystem fileSystem,
             ILogger<LibraryManualScanWorkflow> logger,
-            INotificationService? notificationService = null)
+            INotificationService? notificationService = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _scopeFactory = scopeFactory;
@@ -48,6 +50,7 @@ namespace Listenarr.Api.Features.Library
             _fileSystem = fileSystem;
             _logger = logger;
             _notificationService = notificationService;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> ScanAsync(int id, LibraryController.ScanRequest? request)
@@ -150,6 +153,7 @@ namespace Listenarr.Api.Features.Library
             {
                 audiobook.BasePath = basePath;
                 await _repo.UpdateAsync(audiobook);
+                await SyncCoverSidecarAsync(audiobook);
             }
 
             foreach (var historyEntry in created.Select(fileRecord => new History
@@ -180,6 +184,30 @@ namespace Listenarr.Api.Features.Library
             await SendAvailableNotificationAsync(audiobook, created.Count, updated);
 
             return new OkObjectResult(new { message = "Scan complete", scannedPath = scanRoot, found = foundFiles.Count, created = created.Count, audiobook = updated });
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after scanning audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after scanning audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
         private (List<string> FoundFiles, IActionResult? ErrorResult) FindMatchingAudioFiles(Audiobook audiobook, string scanRoot)

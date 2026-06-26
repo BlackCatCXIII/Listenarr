@@ -33,6 +33,7 @@ namespace Listenarr.Application.Audiobooks.Catalog
         private readonly IFileNamingService _fileNamingService;
         private readonly IRootFolderService _rootFolderService;
         private readonly INotificationService? _notificationService;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryAddService(
             IAudiobookRepository repo,
@@ -44,7 +45,8 @@ namespace Listenarr.Application.Audiobooks.Catalog
             IConfigurationService configurationService,
             IFileNamingService fileNamingService,
             IRootFolderService rootFolderService,
-            INotificationService? notificationService = null)
+            INotificationService? notificationService = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _historyRepository = historyRepository;
@@ -56,6 +58,7 @@ namespace Listenarr.Application.Audiobooks.Catalog
             _fileNamingService = fileNamingService;
             _rootFolderService = rootFolderService;
             _notificationService = notificationService;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<LibraryAddOperationResult> AddToLibraryAsync(
@@ -179,6 +182,7 @@ namespace Listenarr.Application.Audiobooks.Catalog
             await _repo.AddAsync(audiobook);
 
             await ResolveAuthorAsinsAsync(audiobook);
+            await SyncCoverSidecarAsync(audiobook, cancellationToken);
             await SendAddedNotificationAsync(audiobook);
             await AddHistoryEntryAsync(audiobook, request, cancellationToken);
 
@@ -361,6 +365,32 @@ namespace Listenarr.Application.Audiobooks.Catalog
             };
 
             await _historyRepository.AddAsync(historyEntry, cancellationToken);
+        }
+
+        private async Task SyncCoverSidecarAsync(
+            Audiobook audiobook,
+            CancellationToken cancellationToken)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook, cancellationToken);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after adding audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after adding audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
         private static string? ToStringOrFirst(object? value)

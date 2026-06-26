@@ -918,6 +918,10 @@ namespace Listenarr.Infrastructure.Persistence.Migrations
                     b.Property<int>("CompletedFileAction")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("CoverSidecarFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DefaultSearchLanguage")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -981,6 +985,9 @@ namespace Listenarr.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ExtractArchives")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ExportCoverSidecars")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("FailedDownloadAutoSearch")
                         .HasColumnType("INTEGER");
 
@@ -1018,6 +1025,9 @@ namespace Listenarr.Infrastructure.Persistence.Migrations
                     b.Property<string>("OutputPath")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("OverwriteManagedCoverSidecars")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("PollingIntervalSeconds")
                         .HasColumnType("INTEGER");

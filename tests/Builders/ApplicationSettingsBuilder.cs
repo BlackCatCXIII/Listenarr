@@ -96,6 +96,16 @@ namespace Listenarr.Tests.Builders
             return this;
         }
 
+        public ApplicationSettingsBuilder WithCoverSidecars(
+            string fileName = "cover.jpg",
+            bool overwriteManaged = true)
+        {
+            _applicationSettings.ExportCoverSidecars = true;
+            _applicationSettings.CoverSidecarFileName = fileName;
+            _applicationSettings.OverwriteManagedCoverSidecars = overwriteManaged;
+            return this;
+        }
+
         public ApplicationSettings Build()
         {
             _applicationSettings.ImportBlacklistExtensions = _importBlacklistExtensions;

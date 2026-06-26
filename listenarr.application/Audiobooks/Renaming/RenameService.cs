@@ -32,6 +32,7 @@ namespace Listenarr.Application.Audiobooks.Renaming
         private readonly ILogger<RenameService> _logger;
         private readonly IRootFolderService? _rootFolderService;
         private readonly IHistoryRepository? _historyRepository;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public RenameService(
             IConfigurationService configService,
@@ -41,7 +42,8 @@ namespace Listenarr.Application.Audiobooks.Renaming
             IFileSystem fileSystem,
             ILogger<RenameService> logger,
             IRootFolderService? rootFolderService = null,
-            IHistoryRepository? historyRepository = null)
+            IHistoryRepository? historyRepository = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _configService = configService;
             _fileNamingService = fileNamingService;
@@ -51,6 +53,7 @@ namespace Listenarr.Application.Audiobooks.Renaming
             _logger = logger;
             _rootFolderService = rootFolderService;
             _historyRepository = historyRepository;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<List<RenamePreview>> PreviewRenameAsync(int[] audiobookIds, CancellationToken ct = default)
@@ -174,6 +177,7 @@ namespace Listenarr.Application.Audiobooks.Renaming
                     UpdateAudiobookPathSummary(audiobook, shouldTrustRequestedBasePath ? operation.NewFolderPath : null);
                     await _audiobookRepository.SaveChangesAsync(ct);
                     await AddHistoryAsync(audiobook, result);
+                    await SyncCoverSidecarAsync(audiobook, ct);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException && ex is not OutOfMemoryException && ex is not StackOverflowException)
@@ -334,6 +338,30 @@ namespace Listenarr.Application.Audiobooks.Renaming
             }
 
             return (true, null);
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook, CancellationToken cancellationToken)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook, cancellationToken);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after organizing audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after organizing audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
     }

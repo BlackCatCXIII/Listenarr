@@ -18,6 +18,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using Listenarr.Infrastructure.Library.Sidecars;
 
 namespace Listenarr.Infrastructure.Downloads.Processing
 {
@@ -391,6 +392,13 @@ namespace Listenarr.Infrastructure.Downloads.Processing
                         ["JobId"] = job.Id,
                         ["ScanJobId"] = job.TryGetJobDataString("ScanEnqueuedDetail", out var scanId) ? scanId : string.Empty
                     },
+                    cancellationToken);
+
+                await CoverSidecarSyncLogger.SyncAsync(
+                    scope.ServiceProvider,
+                    audiobook,
+                    logger,
+                    "import finalization",
                     cancellationToken);
             }
             catch (InvalidOperationException exception)

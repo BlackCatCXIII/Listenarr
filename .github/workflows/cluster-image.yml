@@ -1,0 +1,134 @@
+name: Cluster image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/cover-sidecars
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cluster-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  API_PROJECT: listenarr.api/Listenarr.Api.csproj
+  DOCKER_OUTPUT: listenarr.api/docker-publish
+  IMAGE_NAME: ghcr.io/blackcatcxiii/listenarr
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build-image.outputs.digest }}
+      short_sha: ${{ steps.short-sha.outputs.sha }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore .NET
+        run: dotnet restore listenarr.slnx
+
+      - name: Install frontend dependencies
+        working-directory: fe
+        run: npm ci
+
+      - name: Check backend formatting
+        run: dotnet format listenarr.slnx --no-restore --verify-no-changes --verbosity minimal
+
+      - name: Check frontend formatting
+        working-directory: fe
+        run: npm run format:check
+
+      - name: Build solution
+        run: dotnet build listenarr.slnx -c Release --no-restore
+
+      - name: Test solution
+        run: dotnet test listenarr.slnx -c Release --no-build
+
+      - name: Publish Docker runtime outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "${DOCKER_OUTPUT}"
+          dotnet publish "${API_PROJECT}" -c Release -r linux-x64 --no-restore --self-contained false /p:UseAppHost=false -o "${DOCKER_OUTPUT}/amd64"
+          dotnet publish "${API_PROJECT}" -c Release -r linux-arm64 --no-restore --self-contained false /p:UseAppHost=false -o "${DOCKER_OUTPUT}/arm64"
+
+      - name: Verify Docker runtime outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            test -f "${DOCKER_OUTPUT}/${arch}/Listenarr.Api.dll"
+            test -d "${DOCKER_OUTPUT}/${arch}/wwwroot"
+            if [ ! -d "${DOCKER_OUTPUT}/${arch}/tools/discord-bot" ]; then
+              mkdir -p "${DOCKER_OUTPUT}/${arch}/tools"
+              cp -r tools/discord-bot "${DOCKER_OUTPUT}/${arch}/tools/"
+            fi
+            rm -rf "${DOCKER_OUTPUT}/${arch}/tools/discord-bot/node_modules"
+            test -f "${DOCKER_OUTPUT}/${arch}/tools/discord-bot/package-lock.json"
+          done
+
+      - name: Compute short SHA
+        id: short-sha
+        shell: bash
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        id: build-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: listenarr.api/Dockerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:cover-sidecars
+            ${{ env.IMAGE_NAME }}:cover-sidecars-${{ steps.short-sha.outputs.sha }}
+
+      - name: Make GHCR package public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method PATCH \
+            /user/packages/container/listenarr/visibility \
+            -f visibility=public \
+          || echo "::warning::Unable to mark package public automatically; set package visibility in GHCR before cluster rollout."
+
+      - name: Write image summary
+        run: |
+          {
+            echo "### Image"
+            echo
+            echo "- \`${IMAGE_NAME}:cover-sidecars\`"
+            echo "- \`${IMAGE_NAME}:cover-sidecars-${{ steps.short-sha.outputs.sha }}\`"
+            echo "- Digest: \`${{ steps.build-image.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

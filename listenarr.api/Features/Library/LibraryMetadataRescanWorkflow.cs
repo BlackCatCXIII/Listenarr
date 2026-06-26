@@ -36,6 +36,7 @@ namespace Listenarr.Api.Features.Library
         private readonly ILogger<LibraryMetadataRescanWorkflow> _logger;
         private readonly IMemoryCache? _memoryCache;
         private readonly IAsinLookupService? _asinLookupService;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryMetadataRescanWorkflow(
             IAudiobookRepository repo,
@@ -44,7 +45,8 @@ namespace Listenarr.Api.Features.Library
             IImageCacheService imageCacheService,
             ILogger<LibraryMetadataRescanWorkflow> logger,
             IMemoryCache? memoryCache = null,
-            IAsinLookupService? asinLookupService = null)
+            IAsinLookupService? asinLookupService = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _metadataService = metadataService;
@@ -53,6 +55,7 @@ namespace Listenarr.Api.Features.Library
             _logger = logger;
             _memoryCache = memoryCache;
             _asinLookupService = asinLookupService;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> RescanAsync(int id, HttpContext httpContext)
@@ -294,6 +297,7 @@ namespace Listenarr.Api.Features.Library
             }
 
             await _repo.UpdateAsync(audiobook);
+            await SyncCoverSidecarAsync(audiobook);
 
             _logger.LogInformation(
                 "Metadata rescan updated audiobook {AudiobookId} ({Title}) using {Source} ASIN {Asin} region {Region}",
@@ -311,6 +315,30 @@ namespace Listenarr.Api.Features.Library
                 asin = resolvedAsin,
                 region = resolvedRegion
             });
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after metadata rescan for audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after metadata rescan for audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
     }

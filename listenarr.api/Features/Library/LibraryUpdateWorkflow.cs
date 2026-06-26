@@ -26,15 +26,18 @@ namespace Listenarr.Api.Features.Library
         private readonly IAudiobookRepository _repo;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<LibraryUpdateWorkflow> _logger;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
 
         public LibraryUpdateWorkflow(
             IAudiobookRepository repo,
             IServiceScopeFactory scopeFactory,
-            ILogger<LibraryUpdateWorkflow> logger)
+            ILogger<LibraryUpdateWorkflow> logger,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _scopeFactory = scopeFactory;
             _logger = logger;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> UpdateAsync(int id, Audiobook updatedAudiobook)
@@ -46,6 +49,8 @@ namespace Listenarr.Api.Features.Library
             }
 
             var legacyIdentifierFieldsTouched = false;
+            var previousImageUrl = existingAudiobook.ImageUrl;
+            var previousBasePath = existingAudiobook.BasePath;
 
             if (updatedAudiobook.Title != null) existingAudiobook.Title = updatedAudiobook.Title;
             if (updatedAudiobook.Subtitle != null) existingAudiobook.Subtitle = updatedAudiobook.Subtitle;
@@ -105,6 +110,10 @@ namespace Listenarr.Api.Features.Library
             }
 
             await _repo.UpdateAsync(existingAudiobook);
+            if (CoverSidecarRelevantFieldsChanged(previousImageUrl, previousBasePath, existingAudiobook))
+            {
+                await SyncCoverSidecarAsync(existingAudiobook);
+            }
 
             _logger.LogInformation("Updated audiobook '{Title}' (ID: {Id})", LogRedaction.SanitizeText(existingAudiobook.Title), id);
 
@@ -180,6 +189,37 @@ namespace Listenarr.Api.Features.Library
             existingAudiobook.QualityProfileId = updatedAudiobook.QualityProfileId.Value;
             _logger.LogInformation("Updated quality profile for audiobook '{Title}' to ID {ProfileId}",
                 existingAudiobook.Title, updatedAudiobook.QualityProfileId.Value);
+        }
+
+        private static bool CoverSidecarRelevantFieldsChanged(
+            string? previousImageUrl,
+            string? previousBasePath,
+            Audiobook audiobook)
+            => !string.Equals(previousImageUrl, audiobook.ImageUrl, StringComparison.Ordinal)
+                || !string.Equals(previousBasePath, audiobook.BasePath, StringComparison.OrdinalIgnoreCase);
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after updating audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after updating audiobook {AudiobookId}", audiobook.Id);
+            }
         }
     }
 }

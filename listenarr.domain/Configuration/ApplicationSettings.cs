@@ -69,6 +69,9 @@ namespace Listenarr.Domain.Configuration
 
         public bool EnableMetadataProcessing { get; set; } = true;
         public bool EnableCoverArtDownload { get; set; } = true;
+        public bool ExportCoverSidecars { get; set; } = false;
+        public string CoverSidecarFileName { get; set; } = "cover.jpg";
+        public bool OverwriteManagedCoverSidecars { get; set; } = true;
         public string AudnexusApiUrl { get; set; } = "https://api.audnex.us";
         public int MaxConcurrentDownloads { get; set; } = 3;
         public int PollingIntervalSeconds { get; set; } = 30;

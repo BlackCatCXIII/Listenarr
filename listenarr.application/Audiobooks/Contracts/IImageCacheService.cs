@@ -25,6 +25,7 @@ namespace Listenarr.Application.Audiobooks.Contracts
         Task<string?> MoveToAuthorLibraryStorageAsync(string identifier, string? imageUrl = null, bool forceRefresh = false);
         Task<string?> MoveToSeriesLibraryStorageAsync(string identifier, string? imageUrl = null, bool forceRefresh = false);
         Task<string?> GetCachedImagePathAsync(string identifier);
+        Task<string?> ResolveImageFilePathAsync(string imageUrl, string identifier, CancellationToken cancellationToken = default);
         Task ClearTempCacheAsync();
     }
 }

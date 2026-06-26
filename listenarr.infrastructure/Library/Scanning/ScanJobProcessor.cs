@@ -18,6 +18,7 @@
 using System.Text.Json;
 using Listenarr.Application.Mapping;
 using Listenarr.Domain.Common;
+using Listenarr.Infrastructure.Library.Sidecars;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -405,6 +406,13 @@ namespace Listenarr.Infrastructure.Library.Scanning
                 var updated = await audiobookRepository.GetByIdAsync(audiobook.Id);
                 if (updated != null)
                 {
+                    await CoverSidecarSyncLogger.SyncAsync(
+                        scope.ServiceProvider,
+                        updated,
+                        _logger,
+                        "scan",
+                        stoppingToken);
+
                     // Build an authoritative Audiobook DTO and broadcast it
                     var audiobookDto = AudiobookDtoFactory.BuildFromEntity(updated);
                     await _hubContext.Clients.All.SendAsync("AudiobookUpdate", audiobookDto);

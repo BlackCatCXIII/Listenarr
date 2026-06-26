@@ -17,6 +17,7 @@
  */
 using Listenarr.Application.Mapping;
 using Listenarr.Domain.Common;
+using Listenarr.Infrastructure.Library.Sidecars;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 namespace Listenarr.Infrastructure.Library.Moving
@@ -87,7 +88,7 @@ namespace Listenarr.Infrastructure.Library.Moving
                 target = Path.GetFullPath(target);
                 source = Path.GetFullPath(source);
 
-                if (IsFilesystemRoot(source) || IsFilesystemRoot(target))
+                if (MovePathSafety.IsFilesystemRoot(source) || MovePathSafety.IsFilesystemRoot(target))
                 {
                     await moveQueueService.UpdateJobStatusAsync(job.Id, "Failed", "Refused to move a filesystem root", stoppingToken);
                     metrics.Increment("worker.move.job.failed");
@@ -260,7 +261,7 @@ namespace Listenarr.Infrastructure.Library.Moving
                     // If we copied directly to target, it's already in place
 
                     // Delete source directory
-                    if (!Directory.Exists(source) || IsFilesystemRoot(source))
+                    if (!Directory.Exists(source) || MovePathSafety.IsFilesystemRoot(source))
                     {
                         throw new IOException("Source path became invalid before cleanup.");
                     }
@@ -273,6 +274,14 @@ namespace Listenarr.Infrastructure.Library.Moving
                         target,
                         audiobookRepository,
                         logger);
+
+                    var freshAudiobook = await audiobookRepository.GetByIdAsync(audiobook.Id) ?? audiobook;
+                    await CoverSidecarSyncLogger.SyncAsync(
+                        scope.ServiceProvider,
+                        freshAudiobook,
+                        logger,
+                        "move",
+                        stoppingToken);
 
                     // Add history entry and send notifications for the move
                     try
@@ -483,18 +492,5 @@ namespace Listenarr.Infrastructure.Library.Moving
             }
         }
 
-        private static bool IsFilesystemRoot(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return false;
-            }
-
-            var fullPath = Path.GetFullPath(path)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var root = Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return !string.IsNullOrWhiteSpace(root)
-                && string.Equals(fullPath, root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-        }
     }
 }

@@ -68,6 +68,40 @@ namespace Listenarr.Tests.Features.Infrastructure.Images.Cache
         }
 
         [Fact]
+        public async Task ResolveImageFilePathAsync_ResolvesApiAndRelativeCachePaths()
+        {
+            var tempRoot = FileService.GetTempPath();
+            var repoApiRoot = Path.Join(tempRoot, "listenarr.api");
+            var tempCachePath = Path.Join(repoApiRoot, "config", "cache", "images", "temp");
+            var libraryCachePath = Path.Join(repoApiRoot, "config", "cache", "images", "library");
+            var authorCachePath = Path.Join(repoApiRoot, "config", "cache", "images", "authors");
+            var seriesCachePath = Path.Join(repoApiRoot, "config", "cache", "images", "series");
+
+            using var httpClient = new HttpClient();
+            var applicationPathService = new Mock<IApplicationPathService>();
+            applicationPathService.SetupGet(service => service.ContentRootPath).Returns(repoApiRoot);
+            applicationPathService.Setup(service => service.ResolveFromConfig("cache", "images", "temp")).Returns(tempCachePath);
+            applicationPathService.Setup(service => service.ResolveFromConfig("cache", "images", "library")).Returns(libraryCachePath);
+            applicationPathService.Setup(service => service.ResolveFromConfig("cache", "images", "authors")).Returns(authorCachePath);
+            applicationPathService.Setup(service => service.ResolveFromConfig("cache", "images", "series")).Returns(seriesCachePath);
+
+            var service = new ImageCacheService(
+                Mock.Of<ILogger<ImageCacheService>>(),
+                httpClient,
+                applicationPathService.Object);
+
+            var cachedImage = Path.Join(libraryCachePath, "BOOK123.jpg");
+            Directory.CreateDirectory(Path.GetDirectoryName(cachedImage)!);
+            await File.WriteAllBytesAsync(cachedImage, [1, 2, 3]);
+
+            var fromApiPath = await service.ResolveImageFilePathAsync("/api/v1/images/BOOK123", "ignored");
+            var fromRelativePath = await service.ResolveImageFilePathAsync("/config/cache/images/library/BOOK123.jpg", "ignored");
+
+            Assert.Equal(cachedImage, fromApiPath);
+            Assert.Equal(cachedImage, fromRelativePath);
+        }
+
+        [Fact]
         public async Task MoveToAuthorLibraryStorageAsync_DoesNotEscapeCacheRootForTraversalIdentifier()
         {
             var tempRoot = FileService.GetTempPath();

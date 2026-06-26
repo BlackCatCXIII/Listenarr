@@ -8,6 +8,7 @@
  * (at your option) any later version.
  */
 using Listenarr.Infrastructure.Persistence.Repositories;
+using Listenarr.Infrastructure.Library.Sidecars;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Listenarr.Infrastructure.DependencyInjection.Library;
@@ -33,6 +34,7 @@ internal static class LibraryRegistrationExtensions
     public static IServiceCollection AddLibraryInfrastructure(this IServiceCollection services)
     {
         services.AddScoped<IAudiobookRepository, AudiobookRepository>();
+        services.AddScoped<ICoverSidecarSyncService, CoverSidecarSyncService>();
         services.AddScoped<IQualityProfileRepository, QualityProfileRepository>();
         services.AddScoped<IAudiobookFileRepository, EfAudiobookFileRepository>();
         services.AddScoped<IMoveJobRepository, EfMoveJobRepository>();

@@ -21,7 +21,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Listenarr.Application.Configuration.Core
 {
-    public class ConfigurationService(
+    public partial class ConfigurationService(
         IApplicationSettingsRepository settingsRepository,
         IApiConfigurationRepository apiConfigRepository,
         IDownloadClientConfigurationRepository downloadClientRepository,
@@ -173,6 +173,8 @@ namespace Listenarr.Application.Configuration.Core
 
                     await settingsRepository.SaveAsync(settings);
                 }
+
+                ApplyEnvironmentOverrides(settings);
 
                 return settings;
             }

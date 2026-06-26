@@ -191,10 +191,17 @@ namespace Listenarr.Tests.Features.Api.Features.Search
             return Task.FromResult<string?>("cache/images/test.jpg");
         }
 
+        public Task<string?> ResolveImageFilePathAsync(
+            string imageUrl,
+            string identifier,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<string?>("cache/images/test.jpg");
+        }
+
         public Task ClearTempCacheAsync()
         {
             return Task.CompletedTask;
         }
     }
 }
-

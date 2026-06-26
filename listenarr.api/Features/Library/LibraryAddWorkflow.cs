@@ -31,6 +31,7 @@ namespace Listenarr.Api.Features.Library
         private readonly IHistoryRepository _historyRepository;
         private readonly INotificationService? _notificationService;
         private readonly ILibraryAddService? _libraryAddService;
+        private readonly ICoverSidecarSyncService? _coverSidecarSyncService;
         private readonly ILogger<LibraryAddWorkflow> _logger;
 
         public LibraryAddWorkflow(
@@ -40,7 +41,8 @@ namespace Listenarr.Api.Features.Library
             IHistoryRepository historyRepository,
             ILogger<LibraryAddWorkflow> logger,
             INotificationService? notificationService = null,
-            ILibraryAddService? libraryAddService = null)
+            ILibraryAddService? libraryAddService = null,
+            ICoverSidecarSyncService? coverSidecarSyncService = null)
         {
             _repo = repo;
             _imageCacheService = imageCacheService;
@@ -49,6 +51,7 @@ namespace Listenarr.Api.Features.Library
             _logger = logger;
             _notificationService = notificationService;
             _libraryAddService = libraryAddService;
+            _coverSidecarSyncService = coverSidecarSyncService;
         }
 
         public async Task<IActionResult> AddAsync(LibraryController.AddToLibraryRequest request)
@@ -140,6 +143,7 @@ namespace Listenarr.Api.Features.Library
 
             await _repo.AddAsync(audiobook);
             await ResolveAuthorAsinsAsync(audiobook);
+            await SyncCoverSidecarAsync(audiobook);
             await SendAddedNotificationAsync(audiobook);
             await AddHistoryAsync(audiobook);
 
@@ -374,6 +378,30 @@ namespace Listenarr.Api.Features.Library
                 Source = "AddNew",
                 Timestamp = DateTime.UtcNow
             });
+        }
+
+        private async Task SyncCoverSidecarAsync(Audiobook audiobook)
+        {
+            if (_coverSidecarSyncService == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = await _coverSidecarSyncService.SyncAsync(audiobook);
+                if (result.Status == CoverSidecarSyncStatus.Failed)
+                {
+                    _logger.LogWarning(
+                        "Cover sidecar sync failed after adding audiobook {AudiobookId}: {Message}",
+                        audiobook.Id,
+                        result.Message);
+                }
+            }
+            catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException))
+            {
+                _logger.LogWarning(exception, "Cover sidecar sync failed after adding audiobook {AudiobookId}", audiobook.Id);
+            }
         }
 
         private static string ComputeShortHash(string? input)
