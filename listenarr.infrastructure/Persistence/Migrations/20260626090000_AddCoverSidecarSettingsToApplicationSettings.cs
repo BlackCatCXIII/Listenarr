@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 #nullable disable
 
 namespace Listenarr.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ListenArrDbContext))]
+    [Migration("20260626090000_AddCoverSidecarSettingsToApplicationSettings")]
     public partial class AddCoverSidecarSettingsToApplicationSettings : Migration
     {
         /// <inheritdoc />

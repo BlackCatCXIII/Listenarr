@@ -43,6 +43,9 @@ public sealed class ReleasedSchemaUpgradeTests
                 .SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('ApplicationSettings')")
                 .ToListAsync();
             Assert.Contains("Version", columns);
+            Assert.Contains("ExportCoverSidecars", columns);
+            Assert.Contains("CoverSidecarFileName", columns);
+            Assert.Contains("OverwriteManagedCoverSidecars", columns);
             var indexes = await verified.Database
                 .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'index'")
                 .ToListAsync();

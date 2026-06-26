@@ -32,5 +32,15 @@ namespace Listenarr.Tests.Features.Infrastructure.Migrations
             Assert.NotNull(attribute);
             Assert.Equal("20260317123000_AddImportBlacklistExtensionsToApplicationSettings", attribute!.Id);
         }
+
+        [Fact]
+        public void AddCoverSidecarSettingsMigration_IsDiscoverableByEf()
+        {
+            var attribute = typeof(AddCoverSidecarSettingsToApplicationSettings)
+                .GetCustomAttribute<MigrationAttribute>();
+
+            Assert.NotNull(attribute);
+            Assert.Equal("20260626090000_AddCoverSidecarSettingsToApplicationSettings", attribute!.Id);
+        }
     }
 }
